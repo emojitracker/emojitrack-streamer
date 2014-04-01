@@ -253,7 +253,18 @@ class WebStreamer < Sinatra::Base
   use WebDetailStreamer
   use WebStreamerReporting
 
+  ################################################
+  # load newrelic in production
+  #  - even though it logs little with streams,
+  #    we can still use to profile memory.
+  ################################################
+  configure :production do
+    require 'newrelic_rpm'
+  end
+
+  ################################################
   # cleanup methods for force a stream disconnect on servers like heroku where server cant detect it :(
+  ################################################
   post '/cleanup/scores' do
     puts "CLEANUP: force scores disconnect for #{request.ip}" if VERBOSE
     matched_conns = WebScoreCachedStreamer.connections.select { |conn| conn.client_ip == request.ip }
