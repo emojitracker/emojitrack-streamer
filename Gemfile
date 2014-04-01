@@ -5,7 +5,6 @@ group :streamer do
   gem 'redis', '~> 3.0.6'
   gem 'hiredis', '~> 0.5.1'
   gem 'oj', '~> 2.6.1'
-  gem 'emoji_data', '~> 0.0.3'
   gem 'sinatra', '~> 1.4.4'
   gem 'thin', '~> 1.6.2'
 end
