@@ -6,7 +6,6 @@ GEM
       execjs
     coffee-script-source (1.7.0)
     daemons (1.1.9)
-    dalli (2.6.4)
     diff-lcs (1.2.5)
     dotenv (0.10.0)
     emoji_data (0.0.3)
@@ -16,12 +15,9 @@ GEM
       dotenv (>= 0.7)
       thor (>= 0.13.6)
     hiredis (0.5.1)
-    memcachier (0.0.2)
     newrelic_rpm (3.7.3.204)
     oj (2.6.1)
     rack (1.5.2)
-    rack-cache (1.2)
-      rack (>= 0.4)
     rack-protection (1.5.2)
       rack
     redis (3.0.7)
@@ -54,14 +50,11 @@ PLATFORMS
 
 DEPENDENCIES
   coffee-script (~> 2.2.0)
-  dalli (~> 2.6.4)
   emoji_data (~> 0.0.3)
   foreman (~> 0.63.0)
   hiredis (~> 0.5.1)
-  memcachier (~> 0.0.2)
   newrelic_rpm
   oj (~> 2.6.1)
-  rack-cache (~> 1.2)
   redis (~> 3.0.6)
   rspec (~> 2.14.1)
   sass (~> 3.2.12)
