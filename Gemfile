@@ -7,9 +7,6 @@ group :streamer do
   gem 'oj', '~> 2.6.1'
   gem 'emoji_data', '~> 0.0.3'
   gem 'sinatra', '~> 1.4.4'
-  gem 'slim', '~> 2.0.2'
-  gem 'coffee-script', '~> 2.2.0'
-  gem 'sass', '~> 3.2.12', :require => 'sass'
   gem 'thin', '~> 1.6.2'
 end
 
