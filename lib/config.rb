@@ -24,12 +24,17 @@ def is_development?
 end
 
 # configure logging to graphite in production
+@hostedgraphite_apikey = ENV['HOSTEDGRAPHITE_APIKEY']
+if is_production? && !@hostedgraphite_apikey
+  puts "Did not find an API key for hostedgraphite, will not log..."
+end
+
 def graphite_log(metric, count)
-  @hostedgraphite_apikey = ENV['HOSTEDGRAPHITE_APIKEY']
-  # puts "Graphite log - #{metric}: #{count}" if VERBOSE
   if is_production?
-    sock = UDPSocket.new
-    sock.send @hostedgraphite_apikey + ".#{metric} #{count}\n", 0, "carbon.hostedgraphite.com", 2003
+    if @hostedgraphite_apikey
+      sock = UDPSocket.new
+      sock.send @hostedgraphite_apikey + ".#{metric} #{count}\n", 0, "carbon.hostedgraphite.com", 2003
+    end
   end
 end
 
