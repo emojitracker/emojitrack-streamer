@@ -208,6 +208,7 @@ class WebStreamerReporting < Sinatra::Base
     def self.current_status
       {
         'node'        => self.node_name,
+        'status'      => 'OK',
         'reported_at' => Time.now.to_i,
         'connections' => {
           'stream_raw'    => WebScoreRawStreamer.connections.map(&:to_hash),
