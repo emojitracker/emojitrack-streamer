@@ -1,5 +1,6 @@
 require 'redis'
 require 'uri'
+require 'socket'
 
 #convenience method for reading booleans from env vars
 def to_boolean(s)
