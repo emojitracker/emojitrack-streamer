@@ -1,4 +1,4 @@
-# emojitrack-streamer-rb
+# emojitrack-streamer
 Handles emojitracker's SSE endpoints for streaming realtime updates to web clients.
 
 Overall responsibilities:
@@ -20,7 +20,7 @@ This represents the original version of emojitracker's SSE streaming functionali
 
 This version uses MRI Ruby threads for concurrency, but has EventMachine reactor stuff sprinkled in for timers and whatnot. (Told you it was a bit of a mess!)
 
-Unlike the new experimental [NodeJS version of emojitrack-streamer](), this version still has the ability to manually manage client socket connections via `SSE_RECONNECT` timing, forced disconnects, and exposing AJAX endpoints for clients to manually indicate when they are done with a resource.  This enables it to work in environments where websocket-style connections are not natively supported (for example, behind Heroku's routing later if you don't have the websockets lab project enabled.)  These functions are unlikely to be ported to a new platform, so this code does have some
+Unlike the new experimental NodeJS version of emojitrack-streamer, this version still has the ability to manually manage client socket connections via `SSE_RECONNECT` timing, forced disconnects, and exposing AJAX endpoints for clients to manually indicate when they are done with a resource.  This enables it to work in environments where websocket-style connections are not natively supported (for example, behind Heroku's routing later if you don't have the websockets lab project enabled.)
 
 ## Streaming API
 All endpoints are normal HTTP connections, which emit EventSource/SSE formatted data.
@@ -64,7 +64,7 @@ Instructions to go here.
 ## Other parts of emojitracker
 This is but a small part of emojitracker's infrastructure.  Major components of the project include:
 
- - emojitrack-web
+ - [emojitrack-web](http://github.com/mroth/emojitrack)
  - emojitrack-streamer
     * ruby version (current) {you are here!}
     * node version (experimental)
@@ -75,4 +75,3 @@ Many of the libraries emojitrack uses have also been carved out into independent
  - [emoji_data.rb](http://github.com/mroth/emoji_data.rb)
  - [emojistatic](http://github.com/mroth/emojistatic)
 
-TODO fill out
