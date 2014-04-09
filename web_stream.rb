@@ -263,7 +263,7 @@ class WebStreamer < Sinatra::Base
   #  - even though it logs little with streams,
   #    we can still use to profile memory.
   ################################################
-  configure :production do
+  configure :production, :staging do
     require 'newrelic_rpm'
   end
 
