@@ -37,7 +37,7 @@ class WebScoreRawStreamer < Sinatra::Base
 
   get '/raw' do
     headers("Access-Control-Allow-Origin" => "*" )
-    headers("X-SSE-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
     content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
@@ -76,7 +76,7 @@ class WebScoreCachedStreamer < Sinatra::Base
 
   get '/eps' do
     headers("Access-Control-Allow-Origin" => "*" )
-    headers("X-SSE-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
     content_type 'text/event-stream'
     stream(:keep_open) do |conn|
       conn = WrappedStream.new(conn, request)
@@ -133,7 +133,7 @@ class WebDetailStreamer < Sinatra::Base
 
   get '/details/:char' do
     headers("Access-Control-Allow-Origin" => "*" )
-    headers("X-SSE-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
     content_type 'text/event-stream'
     stream(:keep_open) do |out|
       tag = params[:char]
@@ -172,7 +172,7 @@ class WebKioskInteractionStreamer < Sinatra::Base
 
   get '/kiosk_interaction' do
     headers("Access-Control-Allow-Origin" => "*" )
-    headers("X-SSE-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
     content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
