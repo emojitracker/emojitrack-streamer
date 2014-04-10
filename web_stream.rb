@@ -35,9 +35,13 @@ end
 class WebScoreRawStreamer < Sinatra::Base
   set :connections, []
 
-  get '/raw' do
+  before do
     headers("Access-Control-Allow-Origin" => "*" )
+    headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+  end
+
+  get '/raw' do
     content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
@@ -74,9 +78,13 @@ class WebScoreCachedStreamer < Sinatra::Base
   cached_scores = {}
   semaphore = Mutex.new
 
-  get '/eps' do
+  before do
     headers("Access-Control-Allow-Origin" => "*" )
+    headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+  end
+
+  get '/eps' do
     content_type 'text/event-stream'
     stream(:keep_open) do |conn|
       conn = WrappedStream.new(conn, request)
@@ -131,9 +139,13 @@ class WebDetailStreamer < Sinatra::Base
 
   set :connections, []
 
-  get '/details/:char' do
+  before do
     headers("Access-Control-Allow-Origin" => "*" )
+    headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+  end
+
+  get '/details/:char' do
     content_type 'text/event-stream'
     stream(:keep_open) do |out|
       tag = params[:char]
@@ -170,9 +182,13 @@ class WebKioskInteractionStreamer < Sinatra::Base
 
   set :connections, []
 
-  get '/kiosk_interaction' do
+  before do
     headers("Access-Control-Allow-Origin" => "*" )
+    headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+  end
+
+  get '/kiosk_interaction' do
     content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
@@ -262,6 +278,7 @@ class WebStreamer < Sinatra::Base
   use WebDetailStreamer
   use WebStreamerReporting
 
+
   ################################################
   # load newrelic in production
   #  - even though it logs little with streams,
@@ -274,8 +291,12 @@ class WebStreamer < Sinatra::Base
   ################################################
   # cleanup methods for force a stream disconnect on servers like heroku where server cant detect it :(
   ################################################
-  post '/cleanup/scores' do
+  before do
     headers("Access-Control-Allow-Origin" => "*" )
+    headers("Cache-Control" => "no-cache")
+  end
+
+  post '/cleanup/scores' do
     puts "CLEANUP: force scores disconnect for #{request.ip}" if VERBOSE
     matched_conns = WebScoreCachedStreamer.connections.select { |conn| conn.client_ip == request.ip }
     matched_conns.each(&:close)
@@ -284,7 +305,6 @@ class WebStreamer < Sinatra::Base
   end
 
   post '/cleanup/details/:id' do
-    headers("Access-Control-Allow-Origin" => "*" )
     id = params[:id]
     puts "CLEANUP: force details #{id} disconnect for #{request.ip}" if VERBOSE
     matched_conns = WebDetailStreamer.connections.select { |conn| conn.client_ip == request.ip  && conn.tag == id}
