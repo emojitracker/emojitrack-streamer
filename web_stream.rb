@@ -102,7 +102,7 @@ class WebScoreCachedStreamer < Sinatra::Base
 
   Thread.new do
     scores = {}
-    while true
+    loop do
       semaphore.synchronize do
         scores = cached_scores.clone
         cached_scores.clear
