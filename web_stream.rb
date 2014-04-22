@@ -100,23 +100,39 @@ class WebScoreCachedStreamer < Sinatra::Base
     end
   end
 
+  #
+  # Spawn a thread to periodically flush the score cache out to all connections.
+  #
   Thread.new do
     scores = {}
+
     loop do
+      # Obtain a mutex lock on the cache just long enough to get a copy of the
+      # values and then reset the cache, this way the update thread can continue
+      # filling the cache without being blocked while this thread is writing the
+      # past update out to any subscribed clients.
       semaphore.synchronize do
         scores = cached_scores.clone
         cached_scores.clear
       end
 
-      connections.each do |out|
-        out.sse_data(Oj.dump scores) unless scores.empty?
+      # Write the packed score update out to all subscribed clients.
+      unless scores.empty?
+        encoded_score_update = Oj.dump scores
+        connections.each do |out|
+          out.sse_data(encoded_score_update)
+        end
       end
 
-      sleep 0.017 #60fps
+      # Wait long enough so that we're emitting at approximately 60fps
+      sleep 0.017 # 1/60.0 rounded up
     end
   end
 
-
+  #
+  # Spawn a thread to continuously read score_updates from Redis and push them
+  # into the rollup cache.
+  #
   Thread.new do
     t_redis = connect_redis()
     t_redis.psubscribe('stream.score_updates') do |on|
