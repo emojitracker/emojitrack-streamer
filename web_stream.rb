@@ -165,7 +165,7 @@ class WebDetailStreamer < Sinatra::Base
     t_redis = connect_redis()
     t_redis.psubscribe('stream.tweet_updates.*') do |on|
       on.pmessage do |match, channel, message|
-        channel_id = channel.split('.')[2] #TODO: perf profile this versus a regex later
+        channel_id = channel.split('.')[2]
         connections.select { |c| c.match_tag?(channel_id) }.each do |conn|
           conn.sse_event_data(channel, message)
         end
@@ -204,7 +204,6 @@ class WebKioskInteractionStreamer < Sinatra::Base
       t_redis = connect_redis()
       t_redis.psubscribe('stream.interaction.*') do |on|
         on.pmessage do |match, channel, message|
-          puts "DEBUG: streamer received interaction request from redis" #TODO: REMOVE ME******
           connections.each do |out|
             out.sse_event_data(channel, message)
           end
