@@ -34,11 +34,42 @@ end
 # convenience methods for all SSE stream classes
 ################################################
 module SSEHelpers
+  #
+  # Set "proper" headers for a SSE streaming connection.
+  #
   def sse_headers()
     headers("Access-Control-Allow-Origin" => "*" )
     headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
     content_type 'text/event-stream'
+  end
+
+  # Provisions a new streaming client on a given connection pool.
+  #
+  # Mostly handles the following:
+  #
+  #  - setting timers for events
+  #  - setting up workarounds for the connection-close issue
+  #  - handlers for logging connect and disconnect
+  #  - handlers for cleanup when connection is done
+  #
+  def pool_provision(wout,pool,forceRefreshRate=null)
+    # if enabled, set up one of our workarounds for handling environments where
+    # the routing layer prevents the server from seeing when the client
+    # disconnects.
+    if SSE_FORCE_REFRESH && forceRefreshRate
+      # tell the client to use a custom (faster) retry timeout on disconnect
+      wout.sse_set_retry(forceRefreshRate)
+      # set a timer for how long we allow a client to be connected before kill
+      EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { wout.close }
+    end
+
+    # add to pool and log connection
+    pool << wout
+    log_connect(wout)
+
+    # remove from pool when the connection is closed
+    wout.callback { log_disconnect(wout); pool.delete(wout) }
   end
 end
 
@@ -53,13 +84,8 @@ class WebScoreRawStreamer < Sinatra::Base
 
   get '/raw' do
     stream(:keep_open) do |out|
-      out = WrappedStream.new(out, request)
-      out.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << out
-      log_connect(out)
-      out.callback { log_disconnect(out); settings.connections.delete(out) }
-
-      if SSE_FORCE_REFRESH then EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { out.close } end
+      wout = WrappedStream.new(out, request)
+      pool_provision(wout,settings.connections,SSE_SCORE_RETRY_MS)
     end
   end
 
@@ -97,13 +123,8 @@ class WebScoreCachedStreamer < Sinatra::Base
 
   get '/eps' do
     stream(:keep_open) do |out|
-      out = WrappedStream.new(out, request)
-      out.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << out
-      log_connect(out)
-      out.callback { log_disconnect(out); settings.connections.delete(out) }
-
-      if SSE_FORCE_REFRESH then EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { conn.close } end
+      wout = WrappedStream.new(out, request)
+      pool_provision(wout,settings.connections,SSE_SCORE_RETRY_MS)
     end
   end
 
@@ -165,13 +186,8 @@ class WebDetailStreamer < Sinatra::Base
   get '/details/:char' do
     stream(:keep_open) do |out|
       tag = params[:char]
-      out = WrappedStream.new(out, request, tag)
-      out.sse_set_retry(SSE_DETAIL_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << out
-      log_connect(out)
-      out.callback { log_disconnect(out); settings.connections.delete(out) }
-
-      if SSE_FORCE_REFRESH then EM.add_timer(SSE_DETAIL_FORCECLOSE_SEC) { out.close } end
+      wout = WrappedStream.new(out, request, tag)
+      pool_provision(wout,settings.connections,SSE_DETAIL_RETRY_MS)
     end
   end
 
@@ -207,10 +223,8 @@ class WebKioskInteractionStreamer < Sinatra::Base
 
   get '/kiosk_interaction' do
     stream(:keep_open) do |out|
-      out = WrappedStream.new(out, request)
-      settings.connections << out
-      log_connect(out)
-      out.callback { log_disconnect(out); settings.connections.delete(out) }
+      wout = WrappedStream.new(out, request)
+      pool_provision(wout,settings.connections)
     end
   end
 
