@@ -49,6 +49,7 @@ class WebScoreRawStreamer < Sinatra::Base
       settings.connections << out
       log_connect(out)
       out.callback { log_disconnect(out); settings.connections.delete(out) }
+
       if SSE_FORCE_REFRESH then EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { out.close } end
     end
   end
@@ -86,15 +87,12 @@ class WebScoreCachedStreamer < Sinatra::Base
 
   get '/eps' do
     content_type 'text/event-stream'
-    stream(:keep_open) do |conn|
-      conn = WrappedStream.new(conn, request)
-      conn.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << conn
-      log_connect(conn)
-      conn.callback do
-        log_disconnect(conn)
-        settings.connections.delete(conn)
-      end
+    stream(:keep_open) do |out|
+      out = WrappedStream.new(out, request)
+      out.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
+      settings.connections << out
+      log_connect(out)
+      out.callback { log_disconnect(out); settings.connections.delete(out) }
 
       if SSE_FORCE_REFRESH then EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { conn.close } end
     end
@@ -169,10 +167,8 @@ class WebDetailStreamer < Sinatra::Base
       out.sse_set_retry(SSE_DETAIL_RETRY_MS) if SSE_FORCE_REFRESH
       settings.connections << out
       log_connect(out)
-      out.callback do
-        log_disconnect(out)
-        settings.connections.delete(out)
-      end
+      out.callback { log_disconnect(out); settings.connections.delete(out) }
+
       if SSE_FORCE_REFRESH then EM.add_timer(SSE_DETAIL_FORCECLOSE_SEC) { out.close } end
     end
   end
