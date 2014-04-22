@@ -69,9 +69,7 @@ class WebScoreRawStreamer < Sinatra::Base
       t_redis = connect_redis()
       t_redis.psubscribe('stream.score_updates') do |on|
         on.pmessage do |match, channel, message|
-          connections.each do |out|
-            out.sse_data(message)
-          end
+          connections.each { |out| out.sse_data(message) }
         end
       end
     end
@@ -121,9 +119,7 @@ class WebScoreCachedStreamer < Sinatra::Base
       # Write the packed score update out to all subscribed clients.
       unless scores.empty?
         encoded_score_update = Oj.dump scores
-        connections.each do |out|
-          out.sse_data(encoded_score_update)
-        end
+        connections.each { |out| out.sse_data(encoded_score_update) }
       end
 
       # Wait long enough so that we're emitting at approximately 60fps
@@ -210,9 +206,7 @@ class WebKioskInteractionStreamer < Sinatra::Base
       t_redis = connect_redis()
       t_redis.psubscribe('stream.interaction.*') do |on|
         on.pmessage do |match, channel, message|
-          connections.each do |out|
-            out.sse_event_data(channel, message)
-          end
+          connections.each { |out| out.sse_data(channel, message) }
         end
       end
     end
