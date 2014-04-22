@@ -56,7 +56,7 @@ class WebScoreRawStreamer < Sinatra::Base
   #allow raw stream to be disabled since we arent using it for anything official now and will save on redis connections
   if ENABLE_RAW_STREAM
     Thread.new do
-      t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+      t_redis = connect_redis()
       t_redis.psubscribe('stream.score_updates') do |on|
         on.pmessage do |match, channel, message|
           connections.each do |out|
@@ -118,7 +118,7 @@ class WebScoreCachedStreamer < Sinatra::Base
 
 
   Thread.new do
-    t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+    t_redis = connect_redis()
     t_redis.psubscribe('stream.score_updates') do |on|
       on.pmessage do |match, channel, message|
         semaphore.synchronize do
@@ -162,7 +162,7 @@ class WebDetailStreamer < Sinatra::Base
   end
 
   Thread.new do
-    t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+    t_redis = connect_redis()
     t_redis.psubscribe('stream.tweet_updates.*') do |on|
       on.pmessage do |match, channel, message|
         channel_id = channel.split('.')[2] #TODO: perf profile this versus a regex later
@@ -201,7 +201,7 @@ class WebKioskInteractionStreamer < Sinatra::Base
   if ENABLE_KIOSK_INTERACTION_STREAM
     Thread.new do
       puts "SUBSCRIBING TO KIOSK INTERACTIVE STREAM YO"
-      t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+      t_redis = connect_redis()
       t_redis.psubscribe('stream.interaction.*') do |on|
         on.pmessage do |match, channel, message|
           puts "DEBUG: streamer received interaction request from redis" #TODO: REMOVE ME******
