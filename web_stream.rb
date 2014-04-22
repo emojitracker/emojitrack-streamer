@@ -21,12 +21,12 @@ ENABLE_KIOSK_INTERACTION_STREAM = to_boolean(ENV['ENABLE_KIOSK_INTERACTION_STREA
 ################################################
 def log_connect(stream_obj)
   puts "STREAM: connect for #{stream_obj.request_path} from #{request.ip}" if VERBOSE
-  REDIS.PUBLISH 'stream.admin.connect', stream_obj.to_json
+  # REDIS.PUBLISH 'stream.admin.connect', stream_obj.to_json
 end
 
 def log_disconnect(stream_obj)
   puts "STREAM: disconnect for #{stream_obj.request_path} from #{request.ip}" if VERBOSE
-  REDIS.PUBLISH 'stream.admin.disconnect', stream_obj.to_json
+  # REDIS.PUBLISH 'stream.admin.disconnect', stream_obj.to_json
 end
 
 ################################################
