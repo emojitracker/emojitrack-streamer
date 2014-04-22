@@ -30,19 +30,27 @@ def log_disconnect(stream_obj)
 end
 
 ################################################
-# streaming thread for score updates (main page)
+# convenience methods for all SSE stream classes
 ################################################
-class WebScoreRawStreamer < Sinatra::Base
-  set :connections, []
-
-  before do
+module SSEHelpers
+  def sse_headers()
     headers("Access-Control-Allow-Origin" => "*" )
     headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+    content_type 'text/event-stream'
   end
+end
+
+################################################
+# streaming thread for score updates (main page)
+################################################
+class WebScoreRawStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
+
+  set :connections, []
 
   get '/raw' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
       out.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
@@ -74,19 +82,14 @@ end
 # 60 events per second rollup streaming thread for score updates
 ################################################
 class WebScoreCachedStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
 
   set :connections, []
   cached_scores = {}
   semaphore = Mutex.new
 
-  before do
-    headers("Access-Control-Allow-Origin" => "*" )
-    headers("Cache-Control" => "no-cache")
-    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
-  end
-
   get '/eps' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
       out.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
@@ -150,17 +153,12 @@ end
 # streaming thread for tweet updates (detail pages)
 ################################################
 class WebDetailStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
 
   set :connections, []
 
-  before do
-    headers("Access-Control-Allow-Origin" => "*" )
-    headers("Cache-Control" => "no-cache")
-    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
-  end
-
   get '/details/:char' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
       tag = params[:char]
       out = WrappedStream.new(out, request, tag)
@@ -191,17 +189,12 @@ end
 # streaming thread for kiosk interaction
 ################################################
 class WebKioskInteractionStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
 
   set :connections, []
 
-  before do
-    headers("Access-Control-Allow-Origin" => "*" )
-    headers("Cache-Control" => "no-cache")
-    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
-  end
-
   get '/kiosk_interaction' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
       out = WrappedStream.new(out, request)
       settings.connections << out
@@ -283,6 +276,7 @@ end
 # main master class for the app
 ################################################
 class WebStreamer < Sinatra::Base
+
   use WebKioskInteractionStreamer if ENABLE_KIOSK_INTERACTION_STREAM
   use WebScoreRawStreamer         if ENABLE_RAW_STREAM
   use WebScoreCachedStreamer
