@@ -43,7 +43,7 @@ module SSEHelpers
 end
 
 ################################################
-# streaming thread for score updates (main page)
+# streamer for score updates (main page)
 ################################################
 class WebScoreRawStreamer < Sinatra::Base
   helpers SSEHelpers
@@ -63,7 +63,14 @@ class WebScoreRawStreamer < Sinatra::Base
     end
   end
 
-  #allow raw stream to be disabled since we arent using it for anything official now and will save on redis connections
+  #
+  # Spawn a thread to subscribe to Redis score updates and push them out to
+  # clients on the raw endpoint.  We don't need to do anything except pass the
+  # message directly here.
+  #
+  # Allow thread to be disabled since we arent using it for anything official
+  # now and will save on redis connections.
+  #
   if ENABLE_RAW_STREAM
     Thread.new do
       t_redis = connect_redis()
@@ -78,7 +85,7 @@ class WebScoreRawStreamer < Sinatra::Base
 end
 
 ################################################
-# 60 events per second rollup streaming thread for score updates
+# 60 events-per-second rollup streamer for score updates
 ################################################
 class WebScoreCachedStreamer < Sinatra::Base
   helpers SSEHelpers
@@ -168,6 +175,13 @@ class WebDetailStreamer < Sinatra::Base
     end
   end
 
+  #
+  # Spawn a thread to pattern match subscribe to all tweet updates from redis.
+  #
+  # We then examine the Redis channel to get the UID for the matching namespace,
+  # and only send to connections that are tagged with that namespace. The
+  # original Redis channel is used as the SSE event name.
+  #
   Thread.new do
     t_redis = connect_redis()
     t_redis.psubscribe('stream.tweet_updates.*') do |on|
@@ -183,7 +197,7 @@ class WebDetailStreamer < Sinatra::Base
 end
 
 ################################################
-# streaming thread for kiosk interaction
+# streamer for kiosk interaction
 ################################################
 class WebKioskInteractionStreamer < Sinatra::Base
   helpers SSEHelpers
@@ -200,6 +214,15 @@ class WebKioskInteractionStreamer < Sinatra::Base
     end
   end
 
+  #
+  # Spawn a thread to rebroadcast anything from the `stream.interaction.*` Redis
+  # channel to interested clients.
+  #
+  # We are just an intermediary here to allow commands to be sent upstream that
+  # propogate to clients.  Normal clients won't subscribe to this endpoint, as
+  # it was only used for the #emojiartshow thus far, so allow it to be disabled
+  # to save a Redis connection.
+  #
   if ENABLE_KIOSK_INTERACTION_STREAM
     Thread.new do
       puts "SUBSCRIBING TO KIOSK INTERACTIVE STREAM YO"
