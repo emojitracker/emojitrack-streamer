@@ -3,6 +3,7 @@ require 'oj'
 require 'eventmachine'
 require_relative 'lib/config'
 require_relative 'lib/wrapped_stream'
+require_relative 'lib/web_streamer_admin'
 
 ##############################################################
 # configure defaults around forced SSE timeouts and the like
@@ -21,47 +22,87 @@ ENABLE_KIOSK_INTERACTION_STREAM = to_boolean(ENV['ENABLE_KIOSK_INTERACTION_STREA
 ################################################
 def log_connect(stream_obj)
   puts "STREAM: connect for #{stream_obj.request_path} from #{request.ip}" if VERBOSE
-  REDIS.PUBLISH 'stream.admin.connect', stream_obj.to_json
+  # REDIS.PUBLISH 'stream.admin.connect', stream_obj.to_json
 end
 
 def log_disconnect(stream_obj)
   puts "STREAM: disconnect for #{stream_obj.request_path} from #{request.ip}" if VERBOSE
-  REDIS.PUBLISH 'stream.admin.disconnect', stream_obj.to_json
+  # REDIS.PUBLISH 'stream.admin.disconnect', stream_obj.to_json
 end
 
 ################################################
-# streaming thread for score updates (main page)
+# convenience methods for all SSE stream classes
 ################################################
-class WebScoreRawStreamer < Sinatra::Base
-  set :connections, []
-
-  before do
+module SSEHelpers
+  #
+  # Set "proper" headers for a SSE streaming connection.
+  #
+  def sse_headers()
     headers("Access-Control-Allow-Origin" => "*" )
     headers("Cache-Control" => "no-cache")
     headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
+    content_type 'text/event-stream'
   end
 
+  # Provisions a new streaming client on a given connection pool.
+  #
+  # Mostly handles the following:
+  #
+  #  - setting timers for events
+  #  - setting up workarounds for the connection-close issue
+  #  - handlers for logging connect and disconnect
+  #  - handlers for cleanup when connection is done
+  #
+  def pool_provision(wout,pool,forceRefreshRate=null)
+    # if enabled, set up one of our workarounds for handling environments where
+    # the routing layer prevents the server from seeing when the client
+    # disconnects.
+    if SSE_FORCE_REFRESH && forceRefreshRate
+      # tell the client to use a custom (faster) retry timeout on disconnect
+      wout.sse_set_retry(forceRefreshRate)
+      # set a timer for how long we allow a client to be connected before kill
+      EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { wout.close }
+    end
+
+    # add to pool and log connection
+    pool << wout
+    log_connect(wout)
+
+    # remove from pool when the connection is closed
+    wout.callback { log_disconnect(wout); pool.delete(wout) }
+  end
+end
+
+################################################
+# streamer for score updates (main page)
+################################################
+class WebScoreRawStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
+
+  set :connections, []
+
   get '/raw' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
-      out = WrappedStream.new(out, request)
-      out.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << out
-      log_connect(out)
-      out.callback { log_disconnect(out); settings.connections.delete(out) }
-      if SSE_FORCE_REFRESH then EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { out.close } end
+      wout = WrappedStream.new(out, request)
+      pool_provision(wout,settings.connections,SSE_SCORE_RETRY_MS)
     end
   end
 
-  #allow raw stream to be disabled since we arent using it for anything official now and will save on redis connections
+  #
+  # Spawn a thread to subscribe to Redis score updates and push them out to
+  # clients on the raw endpoint.  We don't need to do anything except pass the
+  # message directly here.
+  #
+  # Allow thread to be disabled since we arent using it for anything official
+  # now and will save on redis connections.
+  #
   if ENABLE_RAW_STREAM
     Thread.new do
-      t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+      t_redis = connect_redis()
       t_redis.psubscribe('stream.score_updates') do |on|
         on.pmessage do |match, channel, message|
-          connections.each do |out|
-            out.sse_data(message)
-          end
+          connections.each { |out| out.sse_data(message) }
         end
       end
     end
@@ -70,55 +111,56 @@ class WebScoreRawStreamer < Sinatra::Base
 end
 
 ################################################
-# 60 events per second rollup streaming thread for score updates
+# 60 events-per-second rollup streamer for score updates
 ################################################
 class WebScoreCachedStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
 
   set :connections, []
   cached_scores = {}
   semaphore = Mutex.new
 
-  before do
-    headers("Access-Control-Allow-Origin" => "*" )
-    headers("Cache-Control" => "no-cache")
-    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
-  end
-
   get '/eps' do
-    content_type 'text/event-stream'
-    stream(:keep_open) do |conn|
-      conn = WrappedStream.new(conn, request)
-      conn.sse_set_retry(SSE_SCORE_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << conn
-      log_connect(conn)
-      conn.callback do
-        log_disconnect(conn)
-        settings.connections.delete(conn)
-      end
-
-      if SSE_FORCE_REFRESH then EM.add_timer(SSE_SCORE_FORCECLOSE_SEC) { conn.close } end
+    stream(:keep_open) do |out|
+      wout = WrappedStream.new(out, request)
+      pool_provision(wout,settings.connections,SSE_SCORE_RETRY_MS)
     end
   end
 
+  #
+  # Spawn a thread to periodically flush the score cache out to all connections.
+  #
   Thread.new do
     scores = {}
-    while true
+
+    loop do
+      # Obtain a mutex lock on the cache just long enough to get a copy of the
+      # values and then reset the cache, this way the update thread can continue
+      # filling the cache without being blocked while this thread is writing the
+      # past update out to any subscribed clients.
       semaphore.synchronize do
         scores = cached_scores.clone
         cached_scores.clear
       end
 
-      connections.each do |out|
-        out.sse_data(Oj.dump scores) unless scores.empty?
+      # Write the packed score update out to all subscribed clients.
+      unless scores.empty?
+        encoded_score_update = Oj.dump scores
+        connections.each { |out| out.sse_data(encoded_score_update) }
       end
 
-      sleep 0.017 #60fps
+      # Wait long enough so that we're emitting at approximately 60fps
+      sleep 0.017 # 1/60.0 rounded up
     end
   end
 
-
+  #
+  # Spawn a thread to continuously read score_updates from Redis and push them
+  # into the rollup cache.
+  #
   Thread.new do
-    t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+    t_redis = connect_redis()
     t_redis.psubscribe('stream.score_updates') do |on|
       on.pmessage do |match, channel, message|
         semaphore.synchronize do
@@ -136,36 +178,31 @@ end
 # streaming thread for tweet updates (detail pages)
 ################################################
 class WebDetailStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
 
   set :connections, []
 
-  before do
-    headers("Access-Control-Allow-Origin" => "*" )
-    headers("Cache-Control" => "no-cache")
-    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
-  end
-
   get '/details/:char' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
       tag = params[:char]
-      out = WrappedStream.new(out, request, tag)
-      out.sse_set_retry(SSE_DETAIL_RETRY_MS) if SSE_FORCE_REFRESH
-      settings.connections << out
-      log_connect(out)
-      out.callback do
-        log_disconnect(out)
-        settings.connections.delete(out)
-      end
-      if SSE_FORCE_REFRESH then EM.add_timer(SSE_DETAIL_FORCECLOSE_SEC) { out.close } end
+      wout = WrappedStream.new(out, request, tag)
+      pool_provision(wout,settings.connections,SSE_DETAIL_RETRY_MS)
     end
   end
 
+  #
+  # Spawn a thread to pattern match subscribe to all tweet updates from redis.
+  #
+  # We then examine the Redis channel to get the UID for the matching namespace,
+  # and only send to connections that are tagged with that namespace. The
+  # original Redis channel is used as the SSE event name.
+  #
   Thread.new do
-    t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+    t_redis = connect_redis()
     t_redis.psubscribe('stream.tweet_updates.*') do |on|
       on.pmessage do |match, channel, message|
-        channel_id = channel.split('.')[2] #TODO: perf profile this versus a regex later
+        channel_id = channel.split('.')[2]
         connections.select { |c| c.match_tag?(channel_id) }.each do |conn|
           conn.sse_event_data(channel, message)
         end
@@ -176,38 +213,37 @@ class WebDetailStreamer < Sinatra::Base
 end
 
 ################################################
-# streaming thread for kiosk interaction
+# streamer for kiosk interaction
 ################################################
 class WebKioskInteractionStreamer < Sinatra::Base
+  helpers SSEHelpers
+  before { sse_headers() }
 
   set :connections, []
 
-  before do
-    headers("Access-Control-Allow-Origin" => "*" )
-    headers("Cache-Control" => "no-cache")
-    headers("X-Sse-Cleanup-Requested" => 'true') if SSE_FORCE_REFRESH
-  end
-
   get '/kiosk_interaction' do
-    content_type 'text/event-stream'
     stream(:keep_open) do |out|
-      out = WrappedStream.new(out, request)
-      settings.connections << out
-      log_connect(out)
-      out.callback { log_disconnect(out); settings.connections.delete(out) }
+      wout = WrappedStream.new(out, request)
+      pool_provision(wout,settings.connections)
     end
   end
 
+  #
+  # Spawn a thread to rebroadcast anything from the `stream.interaction.*` Redis
+  # channel to interested clients.
+  #
+  # We are just an intermediary here to allow commands to be sent upstream that
+  # propogate to clients.  Normal clients won't subscribe to this endpoint, as
+  # it was only used for the #emojiartshow thus far, so allow it to be disabled
+  # to save a Redis connection.
+  #
   if ENABLE_KIOSK_INTERACTION_STREAM
     Thread.new do
       puts "SUBSCRIBING TO KIOSK INTERACTIVE STREAM YO"
-      t_redis = Redis.new(:host => REDIS_URI.host, :port => REDIS_URI.port, :password => REDIS_URI.password, :driver => :hiredis)
+      t_redis = connect_redis()
       t_redis.psubscribe('stream.interaction.*') do |on|
         on.pmessage do |match, channel, message|
-          puts "DEBUG: streamer received interaction request from redis" #TODO: REMOVE ME******
-          connections.each do |out|
-            out.sse_event_data(channel, message)
-          end
+          connections.each { |out| out.sse_data(channel, message) }
         end
       end
     end
@@ -215,68 +251,17 @@ class WebKioskInteractionStreamer < Sinatra::Base
 
 end
 
-################################################
-# admin stuff
-################################################
-
-class WebStreamerReporting < Sinatra::Base
-
-  module ReportingUtils
-    STREAM_STATUS_REDIS_KEY = 'admin_stream_status'
-    STREAM_STATUS_UPDATE_RATE = 5
-
-    def self.current_status
-      {
-        'node'        => self.node_name,
-        'status'      => 'OK',
-        'reported_at' => Time.now.to_i,
-        'connections' => {
-          'stream_raw'    => WebScoreRawStreamer.connections.map(&:to_hash),
-          'stream_eps'    => WebScoreCachedStreamer.connections.map(&:to_hash),
-          'stream_detail' => WebDetailStreamer.connections.map(&:to_hash)
-        }
-      }
-    end
-
-    def self.node_name
-      @node_name ||= 'mri-' + ENV['RACK_ENV'] + '-' + (ENV['DYNO'] || 'unknown')
-    end
-
-    def self.push_node_status_to_redis
-      REDIS.HSET STREAM_STATUS_REDIS_KEY, self.node_name, Oj.dump(self.current_status)
-    end
-
-  end
-
-  # periodically log the updates
-  EM.next_tick do
-    EM.add_periodic_timer(ReportingUtils::STREAM_STATUS_UPDATE_RATE) do
-      ReportingUtils.push_node_status_to_redis
-    end
-  end
-
-  helpers ReportingUtils
-
-  get '/admin/?' do
-    redirect '/admin/', 301
-  end
-
-  get '/admin/node.json' do
-    content_type :json
-    Oj.dump ReportingUtils.current_status
-  end
-
-end
 
 ################################################
 # main master class for the app
 ################################################
 class WebStreamer < Sinatra::Base
+
   use WebKioskInteractionStreamer if ENABLE_KIOSK_INTERACTION_STREAM
   use WebScoreRawStreamer         if ENABLE_RAW_STREAM
   use WebScoreCachedStreamer
   use WebDetailStreamer
-  use WebStreamerReporting
+  use WebStreamerAdmin
 
 
   ################################################
@@ -311,16 +296,6 @@ class WebStreamer < Sinatra::Base
     matched_conns.each(&:close)
     content_type :json
     Oj.dump( { 'status' => 'OK', 'closed' => matched_conns.count } )
-  end
-
-  @stream_graphite_log_rate = 10
-  EM.next_tick do
-    # graphite logging for all the streams
-    EM::PeriodicTimer.new(@stream_graphite_log_rate) do
-      graphite_dyno_log("stream.raw.clients",     WebScoreRawStreamer.connections.count)
-      graphite_dyno_log("stream.eps.clients",     WebScoreCachedStreamer.connections.count)
-      graphite_dyno_log("stream.detail.clients",  WebDetailStreamer.connections.count)
-    end
   end
 
 end
