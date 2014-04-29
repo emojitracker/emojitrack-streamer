@@ -22,7 +22,7 @@ class WebStreamerAdmin < Sinatra::Base
     end
 
     def self.node_name
-      @node_name ||= 'mri-' + ENV['RACK_ENV'] + '-' + (ENV['DYNO'] || 'unknown')
+      @node_name ||= 'mri-' + ENV['RACK_ENV'] + '-' + (ENV['DYNO'] || 'dev.1')
     end
 
     def self.push_node_status_to_redis
