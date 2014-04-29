@@ -82,7 +82,7 @@ class WebScoreRawStreamer < Sinatra::Base
 
   set :connections, []
 
-  get '/raw' do
+  get '/subscribe/raw' do
     stream(:keep_open) do |out|
       wout = WrappedStream.new(out, request)
       pool_provision(wout,settings.connections,SSE_SCORE_RETRY_MS)
@@ -121,7 +121,7 @@ class WebScoreCachedStreamer < Sinatra::Base
   cached_scores = {}
   semaphore = Mutex.new
 
-  get '/eps' do
+  get '/subscribe/eps' do
     stream(:keep_open) do |out|
       wout = WrappedStream.new(out, request)
       pool_provision(wout,settings.connections,SSE_SCORE_RETRY_MS)
@@ -183,7 +183,7 @@ class WebDetailStreamer < Sinatra::Base
 
   set :connections, []
 
-  get '/details/:char' do
+  get '/subscribe/details/:char' do
     stream(:keep_open) do |out|
       tag = params[:char]
       wout = WrappedStream.new(out, request, tag)
@@ -221,7 +221,7 @@ class WebKioskInteractionStreamer < Sinatra::Base
 
   set :connections, []
 
-  get '/kiosk_interaction' do
+  get '/subscribe/kiosk_interaction' do
     stream(:keep_open) do |out|
       wout = WrappedStream.new(out, request)
       pool_provision(wout,settings.connections)
@@ -281,7 +281,7 @@ class WebStreamer < Sinatra::Base
     headers("Cache-Control" => "no-cache")
   end
 
-  post '/cleanup/scores' do
+  post '/subscribe/cleanup/scores' do
     puts "CLEANUP: force scores disconnect for #{request.ip}" if VERBOSE
     matched_conns = WebScoreCachedStreamer.connections.select { |conn| conn.client_ip == request.ip }
     matched_conns.each(&:close)
@@ -289,7 +289,7 @@ class WebStreamer < Sinatra::Base
     Oj.dump( { 'status' => 'OK', 'closed' => matched_conns.count } )
   end
 
-  post '/cleanup/details/:id' do
+  post '/subscribe/cleanup/details/:id' do
     id = params[:id]
     puts "CLEANUP: force details #{id} disconnect for #{request.ip}" if VERBOSE
     matched_conns = WebDetailStreamer.connections.select { |conn| conn.client_ip == request.ip  && conn.tag == id}

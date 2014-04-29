@@ -61,7 +61,7 @@ class WebStreamerAdmin < Sinatra::Base
     redirect '/admin/', 301
   end
 
-  get '/admin/node.json' do
+  get '/admin/status.json' do
     content_type :json
     Oj.dump ReportingUtils.current_status
   end
