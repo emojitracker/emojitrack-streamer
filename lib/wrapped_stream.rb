@@ -42,7 +42,7 @@ class WrappedStream < DelegateClass(Sinatra::Helpers::Stream)
       'created_at' => @created_at,
       'age' => self.age,
       'client_ip' => @client_ip,
-      'client_user_agent' => @client_user_agent
+      'user_agent' => @client_user_agent
     }
   end
 
