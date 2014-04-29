@@ -13,11 +13,10 @@ class WebStreamerAdmin < Sinatra::Base
         'node'        => self.node_name,
         'status'      => 'OK',
         'reported_at' => Time.now.to_i,
-        'connections' => {
-          'stream_raw'    => WebScoreRawStreamer.connections.map(&:to_hash),
-          'stream_eps'    => WebScoreCachedStreamer.connections.map(&:to_hash),
-          'stream_detail' => WebDetailStreamer.connections.map(&:to_hash)
-        }
+        'connections' =>
+          WebScoreRawStreamer.connections.map(&:to_hash) +
+          WebScoreCachedStreamer.connections.map(&:to_hash) +
+          WebDetailStreamer.connections.map(&:to_hash)
       }
     end
 
