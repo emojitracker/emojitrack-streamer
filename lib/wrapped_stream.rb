@@ -9,7 +9,7 @@ require 'delegate'
 require 'oj'
 
 class WrappedStream < DelegateClass(Sinatra::Helpers::Stream)
-  attr_reader :request_path, :tag, :age, :client_ip, :client_user_agent, :created_at
+  attr_reader :request_path, :namespace, :tag, :age, :client_ip, :client_user_agent, :created_at
 
   def initialize(wrapped_stream, request=nil, tag=nil)
     @created_at = Time.now.to_i
@@ -35,9 +35,16 @@ class WrappedStream < DelegateClass(Sinatra::Helpers::Stream)
     @tag == tag
   end
 
+  # dirty hack, but since we aren't planning on maintaining this much longer,
+  # quickest thing possible to get API compliance before we replace it.
+  def namespace
+    '/' + @request_path.split('/')[2..-1].join('/')
+  end
+
   def to_hash
     {
       'request_path' => @request_path,
+      'namespace' => self.namespace,
       'tag' => @tag,
       'created_at' => @created_at,
       'age' => self.age,
